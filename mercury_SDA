@@ -49,10 +49,6 @@ for s=1:15
    sector_matrix_2(:,j,s) = agri_matrix_2(:,j).*yearbooks_ratio_2(1:30,s);
   end 
 end
-
-
-%%%%%%%替换%%%%%%% sector_matrix_1和sector_matrix_2合并成sector_matrix，
-sector_matrix=zeros(30,30,15); %%s=1,5,6,7,11,14时，用sector_matrix_2的结果，其余用sector_matrix_1的结果
       
 for s=1:15
     if s==1 || s==5 || s==6 || s==7 || s==11 || s==14
@@ -67,11 +63,10 @@ sector_imports=zeros(31,30,10);
 
 sector_imports(1:30,:,1:10)=sector_matrix(:,:,1:10);
 for j=1:30
- sector_imports(31,j,1)=sum(sector_matrix(:,j,11));    % rice
- sector_imports(31,j,2)=sum(sector_matrix(:,j,12));    % wheat
- sector_imports(31,j,3)=sum(sector_matrix(:,j,13));    % bean
- sector_imports(31,j,7)=sum(sector_matrix(:,j,14));    % milk
- sector_imports(31,j,9)=sum(sector_matrix(:,j,15));    % marinefish
+ sector_imports(31,j,1)=sum(sector_matrix(:,j,11));   
+ sector_imports(31,j,2)=sum(sector_matrix(:,j,12)); 
+ sector_imports(31,j,7)=sum(sector_matrix(:,j,14));    
+ sector_imports(31,j,9)=sum(sector_matrix(:,j,15));    
 end
 
 % calculate ratios for each sector
@@ -164,8 +159,8 @@ conc_pro_rnd = conc_pro2;
 % MeHg concentrations in consumption
 conc_con=zeros(30,10);
  
-for s=1:10   %10个产品
-  for i=1:30    %30省份
+for s=1:10  
+  for i=1:30   
     conc_con(i,s) = conc_pro_rnd(:,s)' * sector_ratio_rnd(:,i,s);      
   end
 end
