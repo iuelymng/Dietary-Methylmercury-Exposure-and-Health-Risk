@@ -1,0 +1,252 @@
+clear all
+clc
+
+%%%%%% the simulation of food trade based on the MRIO table %%%%%%%%%%%%%%
+% read food trade matrix
+agri_matrix_1=xlsread('food_matrix.xlsx','Guan_2017','B2:AE31');
+
+% load yearbooks data
+load('yearbooks_agri_1.txt');%% 31*16 see notes
+
+yearbooks_ratio_1=zeros(30,15);
+for i=1:30
+  for j=1:15
+   yearbooks_ratio_1(i,j) = yearbooks_agri_1(i,j+1)/sum(yearbooks_agri_1(i,[1,12,13,14,15,16]));
+  end
+end
+ 
+
+% split merio table to each sector
+sector_matrix_1=zeros(30,30,15);
+
+
+for s=1:15
+  for j=1:30  
+  sector_matrix_1(:,j,s) = agri_matrix_1(:,j).*yearbooks_ratio_1(1:30,s);
+  end
+end
+
+% read food trade matrix
+agri_matrix_2=xlsread('food_matrix_new.xlsx','Guan_2017','B2:AE31');
+
+% load yearbooks data
+load('yearbooks_agri_2.txt');%% 31*16 see notes
+
+yearbooks_ratio_2=zeros(30,15);
+for i=1:30
+  for j=1:15
+   yearbooks_ratio_2(i,j) = yearbooks_agri_2(i,j+1)/sum(yearbooks_agri_2(i,[1,12,13,14,15,16]));
+  end
+end
+ 
+
+% split merio table to each sector
+sector_matrix_2=zeros(30,30,15);
+
+
+for s=1:15
+  for j=1:30  
+   sector_matrix_2(:,j,s) = agri_matrix_2(:,j).*yearbooks_ratio_2(1:30,s);
+  end 
+end
+
+
+%%%%%%%替换%%%%%%% sector_matrix_1和sector_matrix_2合并成sector_matrix，
+sector_matrix=zeros(30,30,15); %%s=1,5,6,7,11,14时，用sector_matrix_2的结果，其余用sector_matrix_1的结果
+      
+for s=1:15
+    if s==1 || s==5 || s==6 || s==7 || s==11 || s==14
+        sector_matrix(:,:,s) = sector_matrix_2(:,:,s);
+    else
+        sector_matrix(:,:,s) = sector_matrix_1(:,:,s);
+    end
+end
+
+% calculate the total importing values 
+sector_imports=zeros(31,30,10);
+
+sector_imports(1:30,:,1:10)=sector_matrix(:,:,1:10);
+for j=1:30
+ sector_imports(31,j,1)=sum(sector_matrix(:,j,11));    % rice
+ sector_imports(31,j,2)=sum(sector_matrix(:,j,12));    % wheat
+ sector_imports(31,j,3)=sum(sector_matrix(:,j,13));    % bean
+ sector_imports(31,j,7)=sum(sector_matrix(:,j,14));    % milk
+ sector_imports(31,j,9)=sum(sector_matrix(:,j,15));    % marinefish
+end
+
+% calculate ratios for each sector
+sector_ratio=zeros(31,30,10);
+for s=1:10
+ for j=1:30
+  sector_sum = sum(sector_imports(:,j,s));
+
+  for i=1:31
+    sector_ratio(i,j,s) = sector_imports(i,j,s)./sector_sum;                  
+  end
+ end
+end
+
+% split marine fish to source seas
+load('new_fish.txt');
+
+marfish=zeros(6,30);
+
+for j=1:30
+   for i=1:30
+       for k=1:12   
+         switch i   
+           case new_fish(k,1)   
+              marfish(1,j) = marfish(1,j) + sector_ratio(i,j,9).*new_fish(k,2);
+              marfish(2,j) = marfish(2,j) + sector_ratio(i,j,9).*new_fish(k,3);
+              marfish(3,j) = marfish(3,j) + sector_ratio(i,j,9).*new_fish(k,4);
+              marfish(4,j) = marfish(4,j) + sector_ratio(i,j,9).*new_fish(k,5);
+              marfish(5,j) = marfish(5,j) + sector_ratio(i,j,9).*new_fish(k,6);
+         end
+       end
+   end
+end
+
+marfish(6,:) = sector_ratio(31,:,9);
+
+
+
+%%%% switches for the calculation %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+domi = 0;   % urban + rural, for calculation of IQ
+%domi = 1;   % urban, for calculation of AMI
+%domi = 2;    % rural, for calculation of AMI
+
+% load production MeHg concentrations and food intake rates
+if domi == 0  % urban + rural
+  food_intake = load('food_intake_total.txt');   % g/d/capita      
+elseif domi == 1  % urban
+  food_intake = load('food_intake_urban.txt');   % g/d/capita   
+elseif domi == 2  % rural
+  food_intake = load('food_intake_rural.txt');   % g/d/capita   
+end  
+
+load('conc_pro2.txt')      
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+% split fish to marine and freshwater 9-marine fish, 10-fleshwater fish
+food_intake_rate = zeros(30,10);
+food_intake_rate(:,1:8) = food_intake(:,1:8);
+
+for j=1:30
+ food_intake_rate(j,9) = food_intake(j,9).*sum(sector_imports(:,j,9))./(sum(sector_imports(:,j,9))+sum(sector_imports(:,j,10)));
+ food_intake_rate(j,10) = food_intake(j,9).*sum(sector_imports(:,j,10))./(sum(sector_imports(:,j,9))+sum(sector_imports(:,j,10)));
+end
+
+% calculate total EDI
+sector_ratio_new = zeros(35,30,10);
+
+for s=1:10
+  if s==9   % marine fish
+    sector_ratio_new(31:34,:,s) = marfish(1:4,:);    
+    sector_ratio_new(35,:,s) = marfish(5,:) + marfish(6,:);     
+  else    
+    sector_ratio_new(1:30,:,s) = sector_ratio(1:30,:,s);
+    sector_ratio_new(35,:,s) = sector_ratio(31,:,s);  
+  end 
+end
+
+
+%%%%% calculate the source of EDI %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%% simulation begin
+sector_ratio_rnd = sector_ratio_new;
+food_intake_rnd = food_intake_rate;
+bw = 59; %average body weights of Chinese adult females（04-10用56.6；11-15用57.3；16-19用59）
+conc_pro_rnd = conc_pro2;               
+
+  
+% MeHg concentrations in consumption
+conc_con=zeros(30,10);
+ 
+for s=1:10   %10个产品
+  for i=1:30    %30省份
+    conc_con(i,s) = conc_pro_rnd(:,s)' * sector_ratio_rnd(:,i,s);      
+  end
+end
+
+% EDI(estimated daily intake), ug/kg/d
+EDI=conc_con.*food_intake_rnd./(bw*1000); 
+wEDI=conc_con.*food_intake_rnd./1000;  
+
+EDI_province=sum(EDI,2);  
+
+
+% Health impacts: IQ and AMI
+bt = 0.6;  % blood-intake coefficient, ug Hg/L blood per ug Hg/day
+nmt1 = 0.21;  % hair-blood coefficient, pregnant women, ug Hg/g hair per ug Hg/L blood
+nmt2 = 0.18;  % hair-blood coefficient, nonpregnant women, ug Hg/g hair per ug Hg/L blood
+gm = 0.3;  % IQ-hair mercury coefficient, IQ points per ug Hg/g hair
+
+fi = 0.066;  % heart attack-hair mercury coefficient, risk per ug Hg/g hair
+
+              % plausibility of causality-heart attacks vs mercury 
+omg = 1/3;    % 1/3 MeHg causally associated with heart attack
+
+%food source caluculation
+food_risk=wEDI*bt*gm*nmt1;
+
+% IQ
+dIQ = sum(wEDI,2).*bt.*nmt1.*gm; 
+dIQ_province=dIQ;
+
+%SDA
+%% SDA_Hg_4 factors
+clc;
+clear;
+
+e=xlsread('e.xlsx','sheet1','A1:A35'); % unit vector 35*1
+LL0=xlsread('data.xlsx','2013','B3:B32'); 
+LL1=xlsread('data.xlsx','2014','B3:B32');
+SS0=xlsread('data.xlsx','2013','D3:M32'); 
+SS1=xlsread('data.xlsx','2014','D3:M32'); 
+CC0=xlsread('data.xlsx','2013','O3:AW12');
+CC1=xlsread('data.xlsx','2014','O3:AW12');
+ 
+Q=zeros(30,4);
+for i=1:30
+L0=LL0(i,1);
+L1=LL1(i,1);
+S0=SS0(i,1:10);
+S1=SS1(i,1:10);
+C0=CC0(1:10,1:35);
+C1=CC1(1:10,1:35);
+%O0=OO0((1+10*(i-1)):(10*i),1:35);
+%O1=OO1((1+10*(i-1)):(10*i),1:35);
+NN=['/Users/lymeng/Desktop/Hg_risk_SDA/risk_data/2013_MRIO2012/RR-province-',num2str(i),'.csv'];%修改文件名
+O0=csvread(NN);
+MM=['/Users/lymeng/Desktop/Hg_risk_SDA/risk_data/2014_MRIO2012/RR-province-',num2str(i),'.csv'];
+O1=csvread(MM);
+ % total food intake 
+DL=L1-L0;
+
+ % food intake structure
+DS=S1-S0;
+
+ % food trade structure
+DO=O1-O0;
+
+% concentration
+DC=C1-C0;
+
+% Health impacts: IQ and AMI
+bt = 0.6;  % blood-intake coefficient, ug Hg/L blood per ug Hg/day
+nmt1 = 0.21;  % hair-blood coefficient, pregnant women, ug Hg/g hair per ug Hg/L blood
+gm = 0.3;  % IQ-hair mercury coefficient, IQ points per ug Hg/g hair
+nmt2 = 0.18;  % hair-blood coefficient, nonpregnant women, ug Hg/g hair per ug Hg/L blood
+fi = 0.066;  % heart attack-hair mercury coefficient, risk per ug Hg/g hair
+omg = 1/3;    % 1/3 MeHg causally associated with heart attack
+
+% get the Q contribution matrix(IQ)
+QL=1/24*bt*nmt1*gm*(6*DL*S0*(O0.*C0./1000)*e+2*DL*S0*(O1.*C0./1000)*e+2*DL*S1*(O0.*C0./1000)*e+2*DL*S0*(O0.*C1./1000)*e+2*DL*S1*(O0.*C1./1000)*e+2*DL*S1*(O1.*C0./1000)*e+2*DL*S0*(O1.*C1./1000)*e+6*DL*S1*(O1.*C1./1000)*e);
+QS=1/24*bt*nmt1*gm*(6*L0*DS*(O0.*C0./1000)*e+2*L0*DS*(O1.*C0./1000)*e+2*L1*DS*(O0.*C0./1000)*e+2*L0*DS*(O0.*C1./1000)*e+2*L1*DS*(O0.*C1./1000)*e+2*L1*DS*(O1.*C0./1000)*e+2*L0*DS*(O1.*C1./1000)*e+6*L1*DS*(O1.*C1./1000)*e);
+QO=1/24*bt*nmt1*gm*(6*L0*S0*(DO.*C0./1000)*e+2*L0*S1*(DO.*C0./1000)*e+2*L1*S0*(DO.*C0./1000)*e+2*L0*S0*(DO.*C1./1000)*e+2*L1*S0*(DO.*C1./1000)*e+2*L1*S1*(DO.*C0./1000)*e+2*L0*S1*(DO.*C1./1000)*e+6*L1*S1*(DO.*C1./1000)*e);
+QC=1/24*bt*nmt1*gm*(6*L0*S0*(O0.*DC./1000)*e+2*L0*S1*(O0.*DC./1000)*e+2*L1*S0*(O0.*DC./1000)*e+2*L0*S0*(O1.*DC./1000)*e+2*L1*S0*(O1.*DC./1000)*e+2*L1*S1*(O0.*DC./1000)*e+2*L0*S1*(O1.*DC./1000)*e+6*L1*S1*(O1.*DC./1000)*e);
+QQ=[QL,QS,QO,QC];
+Q(i,:)=QQ;
+end
